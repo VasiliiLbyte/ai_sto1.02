@@ -62,8 +62,13 @@ def _add_toc_entry(doc: Document, number: str, title: str, *, level: int = 1) ->
     pf.space_after = Pt(2)
 
     indent_chars = "    " * (level - 1)
-    prefix = f"{number} " if number else ""
-    text = f"{indent_chars}{prefix}{title}"
+    # Avoid "1 1 Title" when the title already starts with the number
+    if number and title.strip().startswith(number):
+        text = f"{indent_chars}{title.strip()}"
+    elif number:
+        text = f"{indent_chars}{number} {title}"
+    else:
+        text = f"{indent_chars}{title}"
 
     r = p.add_run(text)
     r.font.name = FONT_NAME

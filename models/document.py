@@ -109,3 +109,5 @@ class DocumentContent(BaseModel):
     title: str = ""
     sto_number: str = ""
     introduction_status: str = "Введен впервые"
+
+    appendix_start_index: int = -1

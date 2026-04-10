@@ -111,7 +111,12 @@ class DocxWriter:
 
     def add_section_heading(self, number: str, title: str) -> None:
         """Add a section heading: '5 Заголовок' — 14pt bold, JUSTIFY."""
-        text = f"{number} {title}" if number else title
+        if number and title.strip().startswith(number):
+            text = title.strip()
+        elif number:
+            text = f"{number} {title}"
+        else:
+            text = title
         p = self.doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         pf = p.paragraph_format
@@ -222,24 +227,40 @@ class DocxWriter:
                         r.font.size = FONT_SIZE_BODY
 
     def add_image(self, image: ImageData) -> None:
-        """Insert an image preserving its original dimensions."""
+        """Insert an image preserving its original dimensions.
+
+        Scaling logic:
+        - If the original width fits within the printable area, keep it.
+        - If it overflows, scale proportionally to max 16 cm (leaves visual padding).
+        - For images without dimension metadata, default to 14 cm.
+        """
         img_bytes = image.get_bytes()
         if not img_bytes:
             return
 
-        # Max usable width = page_width - left_margin - right_margin = 18 cm
-        max_width_cm = 18.0
-        w_cm = image.width_cm if image.width_cm else 15.0
-        if w_cm > max_width_cm:
-            w_cm = max_width_cm
+        max_width_cm = 16.0
+        w_cm = image.width_cm if image.width_cm else None
+        h_cm = image.height_cm if image.height_cm else None
 
-        # EMF/WMF images may not be directly insertable; try conversion
         bio = BytesIO(img_bytes)
         if image.content_type in ("image/x-emf", "image/x-wmf"):
             bio = _try_convert_metafile(img_bytes) or bio
 
+        if w_cm is None:
+            w_cm = _detect_image_width_cm(bio, max_width_cm)
+            bio.seek(0)
+
+        if w_cm > max_width_cm:
+            if h_cm:
+                h_cm = h_cm * (max_width_cm / w_cm)
+            w_cm = max_width_cm
+
         try:
-            self.doc.add_picture(bio, width=Cm(w_cm))
+            bio.seek(0)
+            pic_kwargs: dict = {"image_path_or_stream": bio, "width": Cm(w_cm)}
+            if h_cm and w_cm < max_width_cm:
+                pic_kwargs["height"] = Cm(h_cm)
+            self.doc.add_picture(**pic_kwargs)
             last_p = self.doc.paragraphs[-1]
             last_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         except Exception as e:
@@ -339,6 +360,19 @@ def _apply_borders(table) -> None:
         el.set(qn("w:color"), "000000")
         borders.append(el)
     tbl_pr.append(borders)
+
+
+def _detect_image_width_cm(bio: BytesIO, fallback_cm: float = 14.0) -> float:
+    """Attempt to determine a reasonable width in cm from image pixel data."""
+    try:
+        from PIL import Image
+        bio.seek(0)
+        img = Image.open(bio)
+        dpi = img.info.get("dpi", (96, 96))[0] or 96
+        width_cm = img.width / dpi * 2.54
+        return min(width_cm, fallback_cm) if width_cm > 2 else fallback_cm
+    except Exception:
+        return fallback_cm
 
 
 def _try_convert_metafile(data: bytes) -> BytesIO | None:

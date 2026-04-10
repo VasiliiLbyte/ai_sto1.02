@@ -11,8 +11,8 @@ OUTPUT_DIR: str = os.getenv("OUTPUT_DIR", str(Path(__file__).parent / "output"))
 
 # LLM models (OpenRouter, no OpenAI / Anthropic)
 MODEL_ANALYZER = "google/gemini-2.5-pro-preview-05-06"
-MODEL_EDITOR = "deepseek/deepseek-r1"
-MODEL_QC = "google/gemini-2.5-flash-preview-05-20"
+MODEL_EDITOR = "google/gemini-2.5-flash-lite"
+MODEL_QC = "google/gemini-2.5-flash-lite"
 
 LLM_TEMPERATURE = 0.3
 LLM_MAX_TOKENS = 16_000

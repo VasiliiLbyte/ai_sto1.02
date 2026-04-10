@@ -23,20 +23,22 @@ STO_REQUIRED_SECTIONS = [
 
 SYSTEM_PROMPT = """\
 Ты — эксперт по стандартам организации (СТО) для ООО «ПКФ «СНАРК».
-Твоя задача: проанализировать структуру черновика документа и создать план реструктуризации \
+Твоя задача: проанализировать структуру черновика документа и создать план маппинга \
 в соответствии с требованиями СТО 31025229–001–2024.
 
 Обязательная структура СТО:
-1. Область применения
-2. Нормативные ссылки
-3. Термины, определения и сокращения
-4-N. Основная часть (нумерованные разделы по теме документа)
-Предпоследний раздел: Отчетные документы
+1 Область применения
+2 Нормативные ссылки
+3 Термины, определения и сокращения
+4-N Основная часть (нумерованные разделы по теме документа — сохрани ВСЕ разделы из черновика)
 Последний раздел: Ответственность
 После разделов: Приложения
 
-Правила нумерации: без точки после номера раздела (правильно: «1 Область применения», \
-неправильно: «1. Область применения»).
+КРИТИЧЕСКИ ВАЖНО:
+- ЗАПРЕЩЕНО удалять, объединять или пропускать какие-либо разделы из черновика.
+- Каждый раздел черновика ДОЛЖЕН присутствовать в маппинге (action = "keep" или "rename").
+- Нумерация: без точки после номера (правильно: «4 Заголовок», неправильно: «4. Заголовок»).
+- Не используй action "merge" или "remove".
 
 Ответь строго в формате JSON (без markdown).
 """
@@ -70,9 +72,11 @@ USER_PROMPT_TEMPLATE = """\
 Важно:
 - Обязательно включи разделы «Область применения», «Нормативные ссылки», \
 «Термины, определения и сокращения» в начале.
-- Последние два раздела основной части должны быть «Отчетные документы» и «Ответственность».
+- Последний раздел — «Ответственность».
 - Если в черновике есть «Общие положения», его содержание нужно перенести в «Область применения».
-- Сохрани все содержательные разделы черновика, лишь переименуй/перенумеруй при необходимости.
+- КАЖДЫЙ раздел из черновика ОБЯЗАН присутствовать в маппинге. НЕ ПРОПУСКАЙ и НЕ ОБЪЕДИНЯЙ разделы.
+- Допустимы только action "keep" (сохранить) или "rename" (переименовать). \
+Не используй "merge", "remove", "add".
 """
 
 
@@ -102,6 +106,7 @@ class StructureAnalyzerAgent(BaseAgent):
         )
 
         mapping = self._parse_response(data)
+        mapping = self._validate_mapping(mapping, content)
         self.logger.info(
             "Structure mapping: %d section mappings", len(mapping.mappings)
         )
@@ -111,17 +116,75 @@ class StructureAnalyzerAgent(BaseAgent):
     def _format_sections(content: DocumentContent) -> str:
         lines: list[str] = []
         for sec in content.sections:
-            lines.append(f"  {sec.number}. {sec.title}  (level={sec.level}, "
-                         f"paragraphs={len(sec.paragraphs)}, "
-                         f"tables={len(sec.tables)}, images={len(sec.images)})")
+            sub_tables = sum(len(s.tables) for s in sec.subsections)
+            total_p = len(sec.paragraphs) + sum(len(s.paragraphs) for s in sec.subsections)
+            lines.append(
+                f"  {sec.number}. {sec.title}  "
+                f"(paragraphs={total_p}, "
+                f"tables={len(sec.tables) + sub_tables}, "
+                f"subsections={len(sec.subsections)})"
+            )
             for sub in sec.subsections:
-                lines.append(f"    {sub.number}. {sub.title}")
+                lines.append(
+                    f"    {sub.number}. {sub.title} "
+                    f"({len(sub.paragraphs)}p, {len(sub.tables)}t)"
+                )
         if not lines:
             for p in content.paragraphs[:60]:
                 t = p.text.strip()
                 if t and any(r.bold for r in p.runs):
                     lines.append(f"  [{p.index}] {t[:120]}")
         return "\n".join(lines) if lines else "(no sections detected)"
+
+    def _validate_mapping(
+        self, mapping: StructureMapping, content: DocumentContent
+    ) -> StructureMapping:
+        """Ensure every parsed section appears in the mapping.
+
+        If the LLM dropped any section, re-add it with action=KEEP.
+        """
+        mapped_draft_numbers = {
+            sm.draft_number.rstrip(".")
+            for sm in mapping.mappings
+            if sm.draft_number
+        }
+
+        missing: list[SectionMapping] = []
+        for sec in content.sections:
+            if sec.number.rstrip(".") not in mapped_draft_numbers:
+                self.logger.warning(
+                    "Section '%s %s' missing from LLM mapping — adding back",
+                    sec.number,
+                    sec.title,
+                )
+                missing.append(
+                    SectionMapping(
+                        draft_number=sec.number,
+                        draft_title=sec.title,
+                        sto_number=sec.number,
+                        sto_title=sec.title,
+                        action=ActionType.KEEP,
+                        content_instructions="Сохранить содержание без изменений.",
+                    )
+                )
+
+        if missing:
+            all_mappings = list(mapping.mappings) + missing
+            all_mappings.sort(key=lambda m: self._sort_key(m.sto_number))
+            mapping.mappings = all_mappings
+
+        return mapping
+
+    @staticmethod
+    def _sort_key(number: str) -> tuple[int, ...]:
+        parts = number.split(".")
+        result = []
+        for p in parts:
+            try:
+                result.append(int(p))
+            except ValueError:
+                result.append(999)
+        return tuple(result)
 
     @staticmethod
     def _parse_response(data: dict) -> StructureMapping:
