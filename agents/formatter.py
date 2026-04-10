@@ -36,7 +36,7 @@ class DocumentFormatterAgent(BaseAgent):
         self.logger.info("Assembling formatted document …")
         writer = DocxWriter()
 
-        sto_number = mapping.sto_number or original.sto_number or "СТО 31025229–XXX–2025"
+        sto_number = mapping.sto_number or original.sto_number or "СТО 31025229–001–2024"
         doc_title = mapping.document_title or original.title or "Стандарт организации"
         intro_status = mapping.introduction_status or "Введен впервые"
 
@@ -50,7 +50,12 @@ class DocumentFormatterAgent(BaseAgent):
 
         # 2. Table of contents
         appendix_titles = self._collect_appendix_titles(original)
-        add_toc_page(writer.doc, sections, appendix_titles=appendix_titles)
+        add_toc_page(
+            writer.doc,
+            sections,
+            appendix_titles=appendix_titles,
+            include_static_fallback=False,
+        )
 
         # 3. Header & footer (on a new section so title page has no header)
         self._setup_body_section(writer, sto_number)

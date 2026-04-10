@@ -17,6 +17,7 @@ def add_toc_page(
     sections: list[SectionData],
     *,
     appendix_titles: list[str] | None = None,
+    include_static_fallback: bool = False,
 ) -> None:
     """Add a 'Содержание' page with section listings.
 
@@ -39,20 +40,23 @@ def add_toc_page(
     # Insert a Word TOC field (updated when document is opened in Word)
     _insert_toc_field(doc)
 
-    # Static fallback listing
-    for sec in sections:
-        _add_toc_entry(doc, sec.number, sec.title, level=1)
-        for sub in sec.subsections:
-            _add_toc_entry(doc, sub.number, sub.title, level=2)
+    if include_static_fallback:
+        # Static fallback listing for environments where Word fields are not updated.
+        for sec in sections:
+            _add_toc_entry(doc, sec.number, sec.title, level=1)
+            for sub in sec.subsections:
+                if _is_duplicate_subsection(sec, sub):
+                    continue
+                _add_toc_entry(doc, sub.number, sub.title, level=2)
 
-    if appendix_titles:
-        for title in appendix_titles:
-            _add_toc_entry(doc, "", title, level=1)
+        if appendix_titles:
+            for title in appendix_titles:
+                _add_toc_entry(doc, "", title, level=1)
 
-    # Standard mandatory trailing sheets
-    _add_toc_entry(doc, "", "Лист регистрации изменений", level=1)
-    _add_toc_entry(doc, "", "Лист ознакомления", level=1)
-    _add_toc_entry(doc, "", "Лист согласования", level=1)
+        # Standard mandatory trailing sheets
+        _add_toc_entry(doc, "", "Лист регистрации изменений", level=1)
+        _add_toc_entry(doc, "", "Лист ознакомления", level=1)
+        _add_toc_entry(doc, "", "Лист согласования", level=1)
 
 
 def _add_toc_entry(doc: Document, number: str, title: str, *, level: int = 1) -> None:
@@ -98,3 +102,9 @@ def _insert_toc_field(doc: Document) -> None:
     fld_char_end = OxmlElement("w:fldChar")
     fld_char_end.set(qn("w:fldCharType"), "end")
     run4._element.append(fld_char_end)
+
+
+def _is_duplicate_subsection(parent: SectionData, sub: SectionData) -> bool:
+    parent_norm = " ".join(parent.title.lower().split())
+    sub_norm = " ".join(sub.title.lower().split())
+    return bool(parent_norm and sub_norm and parent_norm == sub_norm)

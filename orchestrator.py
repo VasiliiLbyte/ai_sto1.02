@@ -14,6 +14,7 @@ from agents.quality import QualityControlAgent, QualityReport
 from models.document import DocumentContent, SectionData
 from models.mapping import StructureMapping
 from services.llm_client import LLMClient
+from services.word_postprocess import update_word_fields
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,11 @@ class Orchestrator:
                 original=original,
                 output_path=output_path,
             )
+            fields_updated = update_word_fields(str(out_path))
+            if not fields_updated:
+                logger.warning(
+                    "Word postprocess unavailable: TOC/page fields may require manual update (Ctrl+A, F9)."
+                )
 
             logger.info("\n>>> STEP 5 (attempt %d): Quality control", attempt)
             report = qc.run(output_path=str(out_path), original_text=original_text)

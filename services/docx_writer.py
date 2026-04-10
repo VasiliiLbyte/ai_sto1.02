@@ -109,7 +109,7 @@ class DocxWriter:
     # Content writing
     # ------------------------------------------------------------------
 
-    def add_section_heading(self, number: str, title: str) -> None:
+    def add_section_heading(self, number: str, title: str, *, level: int = 1) -> None:
         """Add a section heading: '5 Заголовок' — 14pt bold, JUSTIFY."""
         if number and title.strip().startswith(number):
             text = title.strip()
@@ -118,6 +118,12 @@ class DocxWriter:
         else:
             text = title
         p = self.doc.add_paragraph()
+        # Mark as heading so Word TOC can generate page-numbered entries.
+        try:
+            p.style = f"Heading {max(1, min(level, 9))}"
+        except Exception:
+            # If style is unavailable in localized Word template, keep plain paragraph.
+            pass
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         pf = p.paragraph_format
         pf.first_line_indent = FIRST_LINE_INDENT
@@ -275,7 +281,7 @@ class DocxWriter:
 
     def write_section(self, section: SectionData) -> None:
         """Write a full section with heading, paragraphs, tables, and images."""
-        self.add_section_heading(section.number, section.title)
+        self.add_section_heading(section.number, section.title, level=section.level or 1)
 
         img_positions: dict[int, ImageData] = {}
         for img in section.images:

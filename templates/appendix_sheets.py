@@ -15,6 +15,7 @@ def add_change_registration_sheet(doc: Document) -> None:
     doc.add_page_break()
 
     p = doc.add_paragraph()
+    p.style = "Heading 1"
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     pf = p.paragraph_format
     pf.space_before = Pt(0)
@@ -66,6 +67,7 @@ def add_familiarization_sheet(doc: Document) -> None:
     doc.add_page_break()
 
     p = doc.add_paragraph()
+    p.style = "Heading 1"
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     pf = p.paragraph_format
     pf.space_before = Pt(0)
@@ -115,6 +117,7 @@ def add_approval_sheet(doc: Document, signatories: list[tuple[str, str]] | None 
     doc.add_page_break()
 
     p = doc.add_paragraph()
+    p.style = "Heading 1"
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     pf = p.paragraph_format
     pf.space_before = Pt(0)
